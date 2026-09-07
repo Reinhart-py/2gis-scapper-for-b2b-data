@@ -56,7 +56,7 @@ Linux / macOS:
 
 3. Install dependencies:
   ```
-  pip install -r requirements.txt 
+  pip install --only-binary :all: -r requirements.txt 
   ```
 
 ---
