@@ -37,5 +37,5 @@ Built on Selenium WebDriver, it handles dynamic drawer rendering, unmasks contac
 
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/Reinhart-py/2gis-scapper-for-b2b-data.git](https://github.com/Reinhart-py/2gis-scapper-for-b2b-data.git)
+   git clone https://github.com/Reinhart-py/2gis-scapper-for-b2b-data.git
    cd 2gis-scapper-for-b2b-data
