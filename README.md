@@ -38,7 +38,8 @@ Built on Selenium WebDriver, it handles dynamic drawer rendering, unmasks contac
 1. Clone the repository:
    ```
    git clone https://github.com/Reinhart-py/2gis-scapper-for-b2b-data.git
-   cd 2gis-scapper-for-b2b-data```
+   cd 2gis-scapper-for-b2b-data
+   ```
 
 2. Create and activate a virtual environment:
 Windows (CMD):
@@ -49,11 +50,13 @@ Windows (CMD):
 Linux / macOS:
      ```
      python3 -m venv .venv
-     source .venv/bin/activate```
+     source .venv/bin/activate
+     ```
 
 3. Install dependencies:
   ```
-  pip install -r requirements.txt ```
+  pip install -r requirements.txt 
+  ```
 
 ---
 
