@@ -1,6 +1,6 @@
 # 2GIS Data Scraper
 
-Scrapes business listings from [2GIS](https://2gis.ru) by city and search query. Uses Selenium to drive Chrome through paginated search results and BeautifulSoup to extract structured data, outputting to CSV.
+Scrapes business listings from [2GIS](https://2gis.ae) by city and search query. Uses Selenium to drive Chrome through paginated search results and BeautifulSoup to extract structured data, outputting to CSV.
 
 Extracted fields: `title`, `type`, `address`, `rating`.
 
@@ -19,8 +19,8 @@ ChromeDriver is managed automatically by Selenium — no manual download require
 ## Setup
 
 ```bash
-git clone https://github.com/iqbalmdkaify/2GIS-data-scraper.git
-cd 2GIS-data-scraper
+git clone https://github.com/Reinhart-py/2gis-scapper-for-b2b-data.git
+cd 2gis-scapper-for-b2b-data
 
 uv venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
