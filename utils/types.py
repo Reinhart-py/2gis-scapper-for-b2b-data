@@ -8,7 +8,9 @@ DataList: TypeAlias = List[StrOrNull]
 @dataclass
 class ColumnData:
     title: DataList
+    category: DataList
     phone_1: DataList
     phone_2: DataList
     phone_3: DataList
+    website: DataList
     address: DataList
