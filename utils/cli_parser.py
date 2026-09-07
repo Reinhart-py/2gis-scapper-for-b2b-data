@@ -10,9 +10,16 @@ def initiate_cli_parser() -> argparse.Namespace:
         exit_on_error=True,
     )
 
-    parser.add_argument("city_name", type=str, help="Target city (e.g., dubai, moscow, almaty)")
-    parser.add_argument("query_string", type=str, help="Search keyword (e.g., supermarkets, software)")
-
+    parser.add_argument(
+        "city_name",
+        type=str,
+        help="Target city (e.g., dubai, moscow, almaty)",
+    )
+    parser.add_argument(
+        "query_string",
+        type=str,
+        help="Search keyword (e.g., supermarkets, software)",
+    )
     parser.add_argument(
         "-c",
         "--country",
