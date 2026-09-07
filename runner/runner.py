@@ -39,7 +39,7 @@ class Runner:
             for page in range(1, num_of_pages):
                 print(f"\n>>> SCRAPING PAGE {page} <<<")
 
-                # Locate scrollable listing panel
+                # Locate the left scrollable sidebar
                 scroll_container = None
                 for container_xpath in [
                     "(//div[@class='_15gu4wr'])[3]",
@@ -52,7 +52,7 @@ class Runner:
                     except Exception:
                         continue
 
-                # Scroll to force lazy-loading of all 12 items
+                # Scroll down in short increments to mount all 12 cards in DOM
                 for _ in range(5):
                     if scroll_container:
                         driver.execute_script("arguments[0].scrollTop += 700;", scroll_container)
@@ -84,15 +84,7 @@ class Runner:
 
                         title = card_lines[0]
 
-                        # Category: line 1 or sub-badge if available
-                        category = "null"
-                        if len(card_lines) > 1:
-                            category = card_lines[1]
-                        if len(card_lines) > 3 and "street" not in card_lines[-1].lower() and "tower" not in card_lines[-1].lower():
-                            # If bottom line has specific niche like 'Manufacturing Process Automation'
-                            category = f"{category} | {card_lines[-1]}"
-
-                        # Address: typically line 2 or 3
+                        # Detect address from card preview
                         address = "null"
                         for line in card_lines[1:]:
                             if any(k in line.lower() for k in ["street", "road", "tower", "building", "floor", "bay", "dubai", "industrial"]):
@@ -101,11 +93,11 @@ class Runner:
                         if address == "null" and len(card_lines) > 2:
                             address = card_lines[2]
 
-                        # Click card to open drawer
+                        # Open business profile drawer (defaults to Contacts tab)
                         driver.execute_script("arguments[0].click();", card)
-                        time.sleep(0.35)
+                        time.sleep(0.4)
 
-                        # Click show phone button
+                        # Reveal hidden phone digits
                         try:
                             btns = driver.find_elements(
                                 By.XPATH,
@@ -117,7 +109,7 @@ class Runner:
                         except Exception:
                             pass
 
-                        # Phone Numbers
+                        # Extract phone numbers
                         found_phones = []
                         tel_anchors = driver.find_elements(By.XPATH, "//a[starts-with(@href, 'tel:')]")
                         for a in tel_anchors:
@@ -132,7 +124,7 @@ class Runner:
                         p2 = found_phones[1] if len(found_phones) > 1 else "null"
                         p3 = found_phones[2] if len(found_phones) > 2 else "null"
 
-                        # Website extraction (external URL anchors inside drawer)
+                        # Extract website URL
                         website = "null"
                         web_anchors = driver.find_elements(
                             By.XPATH,
@@ -145,16 +137,43 @@ class Runner:
                                 website = text_val if "." in text_val else raw_href
                                 break
 
+                        # Switch to 'Info' tab to get detailed categories
+                        category = "null"
+                        try:
+                            info_tab = driver.find_elements(
+                                By.XPATH,
+                                "//div[text()='Info'] | //button[contains(., 'Info')] | //a[contains(@href, '/tab/info')]"
+                            )
+                            if info_tab:
+                                driver.execute_script("arguments[0].click();", info_tab[0])
+                                time.sleep(0.25)
+
+                                # Match items inside the Categories section
+                                cat_nodes = driver.find_elements(
+                                    By.XPATH,
+                                    "//div[contains(text(), 'Categories')]/following-sibling::div//a | //div[contains(text(), 'Categories')]/..//a"
+                                )
+                                cat_names = [c.text.strip() for c in cat_nodes if c.text.strip()]
+                                if cat_names:
+                                    category = " | ".join(cat_names)
+                        except Exception:
+                            pass
+
+                        # Fallback to card category text if Info tab has no entries
+                        if category == "null":
+                            if len(card_lines) > 1 and "street" not in card_lines[1].lower():
+                                category = card_lines[1]
+
                         append_single_row(
                             self.output_dir, [title, category, p1, p2, p3, website, address]
                         )
                         total_saved += 1
-                        print(f"[{total_saved}] {title[:22]} | {category[:15]} | {p1} | {website}")
+                        print(f"[{total_saved}] {title[:20]} | Cat: {category[:25]} | {p1} | {website}")
 
                     except Exception:
                         continue
 
-                # Go to next page
+                # Advance to next page
                 try:
                     next_btn = find(driver, XPATHS["next_page_btn"])
                     driver.execute_script("arguments[0].scrollIntoView(true);", next_btn)
