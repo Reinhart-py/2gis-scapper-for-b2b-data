@@ -63,7 +63,9 @@ Linux / macOS:
 
 ## Usage
 
-python main.py <city_name> <query_string> [options]
+```
+call .venv\Scripts\activate && python main.py <city_name> <query_string> [options] 
+```
 
 ### CLI Options
 
@@ -78,7 +80,7 @@ python main.py <city_name> <query_string> [options]
 ### Examples
 
 # Scrape supermarkets in Dubai (UAE)
-python main.py dubai supermarkets
+call .venv\Scripts\activate && python main.py dubai supermarkets
 
 # Scrape coffee shops in Moscow on 2gis.ru
 python main.py moscow coffee -c ru
