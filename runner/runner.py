@@ -39,7 +39,7 @@ class Runner:
             for page in range(1, num_of_pages):
                 print(f"\n>>> SCRAPING PAGE {page} <<<")
 
-                # Find the scrollable container for the listings
+                # Locate scrollable listing panel
                 scroll_container = None
                 for container_xpath in [
                     "(//div[@class='_15gu4wr'])[3]",
@@ -52,34 +52,26 @@ class Runner:
                     except Exception:
                         continue
 
-                # Scroll down in increments to force 2GIS to lazy-load all 12 cards
+                # Scroll to force lazy-loading of all 12 items
                 for _ in range(5):
                     if scroll_container:
-                        driver.execute_script(
-                            "arguments[0].scrollTop += 700;", scroll_container
-                        )
+                        driver.execute_script("arguments[0].scrollTop += 700;", scroll_container)
                     else:
                         driver.execute_script("window.scrollBy(0, 700);")
                     time.sleep(0.3)
 
-                # Fetch all cards now that DOM virtual items have mounted
                 cards = driver.find_elements(
                     By.XPATH,
                     "//div[@class='_1kf6gff'] | //div[contains(@class, '_1469e3a')]",
                 )
                 if not cards:
-                    cards = driver.find_elements(
-                        By.XPATH, "//a[contains(@href, '/firm/')]"
-                    )
+                    cards = driver.find_elements(By.XPATH, "//a[contains(@href, '/firm/')]")
 
                 print(f"Found {len(cards)} listings on page {page}")
 
                 for idx, card in enumerate(cards, 1):
                     try:
-                        # Scroll the individual card into view
-                        driver.execute_script(
-                            "arguments[0].scrollIntoView({block: 'center'});", card
-                        )
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", card)
                         time.sleep(0.1)
 
                         card_lines = [
@@ -91,35 +83,43 @@ class Runner:
                             continue
 
                         title = card_lines[0]
-                        address = (
-                            card_lines[2]
-                            if len(card_lines) > 2
-                            else (card_lines[1] if len(card_lines) > 1 else "null")
-                        )
 
-                        # Open drawer
+                        # Category: line 1 or sub-badge if available
+                        category = "null"
+                        if len(card_lines) > 1:
+                            category = card_lines[1]
+                        if len(card_lines) > 3 and "street" not in card_lines[-1].lower() and "tower" not in card_lines[-1].lower():
+                            # If bottom line has specific niche like 'Manufacturing Process Automation'
+                            category = f"{category} | {card_lines[-1]}"
+
+                        # Address: typically line 2 or 3
+                        address = "null"
+                        for line in card_lines[1:]:
+                            if any(k in line.lower() for k in ["street", "road", "tower", "building", "floor", "bay", "dubai", "industrial"]):
+                                address = line
+                                break
+                        if address == "null" and len(card_lines) > 2:
+                            address = card_lines[2]
+
+                        # Click card to open drawer
                         driver.execute_script("arguments[0].click();", card)
                         time.sleep(0.35)
 
-                        # Unmask phone digits
+                        # Click show phone button
                         try:
                             btns = driver.find_elements(
                                 By.XPATH,
                                 "//span[contains(text(), 'Show phone')] | //button[contains(., 'phone') or contains(., 'Phone')]",
                             )
                             if btns:
-                                driver.execute_script(
-                                    "arguments[0].click();", btns[0]
-                                )
+                                driver.execute_script("arguments[0].click();", btns[0])
                                 time.sleep(0.15)
                         except Exception:
                             pass
 
-                        # Read revealed numbers
+                        # Phone Numbers
                         found_phones = []
-                        tel_anchors = driver.find_elements(
-                            By.XPATH, "//a[starts-with(@href, 'tel:')]"
-                        )
+                        tel_anchors = driver.find_elements(By.XPATH, "//a[starts-with(@href, 'tel:')]")
                         for a in tel_anchors:
                             href_val = a.get_attribute("href")
                             if href_val:
@@ -127,29 +127,37 @@ class Runner:
                                 if num and num not in found_phones:
                                     found_phones.append(num)
 
-                        found_phones.sort(
-                            key=lambda x: 0 if ("971" in x) else 1
-                        )
-
+                        found_phones.sort(key=lambda x: 0 if ("971" in x) else 1)
                         p1 = found_phones[0] if len(found_phones) > 0 else "null"
                         p2 = found_phones[1] if len(found_phones) > 1 else "null"
                         p3 = found_phones[2] if len(found_phones) > 2 else "null"
 
+                        # Website extraction (external URL anchors inside drawer)
+                        website = "null"
+                        web_anchors = driver.find_elements(
+                            By.XPATH,
+                            "//a[contains(@href, 'http') and not(contains(@href, '2gis')) and not(contains(@href, 'google')) and not(starts-with(@href, 'tel:'))]"
+                        )
+                        for w in web_anchors:
+                            raw_href = w.get_attribute("href")
+                            text_val = w.text.strip()
+                            if raw_href and ("." in text_val or "http" in raw_href):
+                                website = text_val if "." in text_val else raw_href
+                                break
+
                         append_single_row(
-                            self.output_dir, [title, p1, p2, p3, address]
+                            self.output_dir, [title, category, p1, p2, p3, website, address]
                         )
                         total_saved += 1
-                        print(f"[{total_saved}] {title[:28]} | {p1} | {p2} | {p3}")
+                        print(f"[{total_saved}] {title[:22]} | {category[:15]} | {p1} | {website}")
 
                     except Exception:
                         continue
 
-                # Scroll to bottom and click pagination button
+                # Go to next page
                 try:
                     next_btn = find(driver, XPATHS["next_page_btn"])
-                    driver.execute_script(
-                        "arguments[0].scrollIntoView(true);", next_btn
-                    )
+                    driver.execute_script("arguments[0].scrollIntoView(true);", next_btn)
                     time.sleep(0.4)
                     driver.execute_script("arguments[0].click();", next_btn)
                     time.sleep(2.5)
