@@ -1,4 +1,4 @@
-python -c "content = '''# 2GIS B2B Lead & Contact Scraper
+# 2GIS B2B Lead & Contact Scraper
 
 A lightweight, automated lead-generation tool to extract business names, addresses, and multiple phone numbers (split into separate columns) from [2GIS](https://2gis.ae).
 
@@ -118,4 +118,3 @@ python main.py almaty hotels -c kz -o ./data/almaty_hotels.csv
 ## License
 
 Distributed under the Apache License 2.0.
-'''; open('README.md', 'w', encoding='utf-8').write(content)"
