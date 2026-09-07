@@ -1,35 +1,38 @@
 import argparse
 import logging
-
 from .loggers import parse_log_level
-
-cli_parser = argparse.ArgumentParser(
-    prog="2GIS Data Scrapper",
-    description="This program extracts data from 2GIS Map",
-    exit_on_error=True,
-)
-
-# Positional Arguments
-cli_parser.add_argument("city_name", type=str)
-cli_parser.add_argument("query_string", type=str)
-
-# Optional Arguments
-cli_parser.add_argument(
-    "-o",
-    "--output_path",
-    type=str,
-    default="./data/raw.csv",
-    help="Supports only .csv format",
-)
-
-cli_parser.add_argument(
-    "-l",
-    "--log",
-    type=parse_log_level,
-    help="Set logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
-    default=logging.INFO,
-)
 
 
 def initiate_cli_parser() -> argparse.Namespace:
-    return cli_parser.parse_args()
+    parser = argparse.ArgumentParser(
+        prog="2GIS B2B Contact Scraper",
+        description="Extracts business listings, addresses, and contact numbers from 2GIS.",
+        exit_on_error=True,
+    )
+
+    parser.add_argument("city_name", type=str, help="Target city (e.g., dubai, moscow, almaty)")
+    parser.add_argument("query_string", type=str, help="Search keyword (e.g., supermarkets, software)")
+
+    parser.add_argument(
+        "-c",
+        "--country",
+        type=str,
+        default="ae",
+        help="2GIS top-level domain country code: 'ae' for UAE, 'ru' for Russia, 'kz' for Kazakhstan. Default: 'ae'",
+    )
+    parser.add_argument(
+        "-o",
+        "--output_path",
+        type=str,
+        default="./data/raw.csv",
+        help="Path to output CSV file. Default: ./data/raw.csv",
+    )
+    parser.add_argument(
+        "-l",
+        "--log",
+        type=parse_log_level,
+        default=logging.INFO,
+        help="Logging level (DEBUG, INFO, WARNING, ERROR). Default: INFO",
+    )
+
+    return parser.parse_args()
