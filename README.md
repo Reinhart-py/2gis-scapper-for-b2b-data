@@ -1,78 +1,41 @@
-# 2GIS Data Scraper
+# 2GIS B2B Lead & Contact Scraper
 
-Scrapes business listings from [2GIS](https://2gis.ae) by city and search query. Uses Selenium to drive Chrome through paginated search results and BeautifulSoup to extract structured data, outputting to CSV.
+A lightweight, automated lead-generation tool to extract business names, addresses, and multiple phone numbers (split into separate columns) from [2GIS](https://2gis.ae). 
 
-Extracted fields: `title`, `type`, `address`, `rating`.
+Built on Selenium WebDriver, it handles dynamic drawer rendering, unmasks contact details behind "Show phone number" buttons, and immediately flushes data to disk line-by-line.
+
+---
+
+## Features
+
+- **Multi-Phone Extraction**: Automatically separates primary and alternative contact lines into `phone_1`, `phone_2`, and `phone_3`.
+- **Country Priority Sorting**: Intelligently prioritizes official country-code prefixes (e.g., `+971`) into `phone_1`.
+- **Dynamic Unmasking**: Automatically detects and triggers hidden contact reveal buttons.
+- **Fail-Safe Stream Writing**: Appends and flushes each row directly to CSV in real time; stopping execution (`Ctrl + C`) never loses saved records.
+- **Multi-Region Support**: Switch between `2gis.ae`, `2gis.ru`, `2gis.kz`, etc., using the `-c` flag.
+
+---
+
+## Output Format (`./data/raw.csv`)
+
+| title | phone_1 | phone_2 | phone_3 | address |
+|---|---|---|---|---|
+| Union Co-operative Society | +97143200000 | +97143200001 | 8008889 | Ras Al Khor Industrial 3, Dubai |
+| IT Bits Software & Events | +97142879755 | null | null | The Metropolis, Marasi Drive, Business Bay, Dubai |
 
 ---
 
 ## Requirements
 
-- Python 3.11
-- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- Python 3.11+
 - Google Chrome (latest)
-
-ChromeDriver is managed automatically by Selenium — no manual download required.
-
----
-
-## Setup
-
-```bash
-git clone https://github.com/Reinhart-py/2gis-scapper-for-b2b-data.git
-cd 2gis-scapper-for-b2b-data
-
-uv venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-
-uv pip install selenium beautifulsoup4
-```
+- ChromeDriver (automatically handled by Selenium)
 
 ---
 
-## Usage
+## Installation
 
-```
-python main.py <city_name> <query_string> [options]
-```
-
-### Arguments
-
-| Argument | Type | Description |
-|---|---|---|
-| `city_name` | positional | City to search in (e.g. `moscow`) |
-| `query_string` | positional | Search term (e.g. `coffee`) |
-| `-o`, `--output_path` | optional | Output CSV path. Default: `./data/raw.csv` |
-| `-l`, `--log` | optional | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR`. Default: `INFO` |
-
-### Examples
-
-```bash
-# Basic
-python main.py moscow coffee
-
-# Custom output path
-python main.py novosibirsk hotel -o ./data/hotels.csv
-
-# With debug logging
-python main.py almaty restaurant -l DEBUG
-```
-
----
-
-## Output
-
-Results are written to `./data/raw.csv` (or the path set via `-o`). A raw HTML snapshot of each page is saved to `../data/temp.txt` during the run for debugging.
-
-Example output:
-
-| title | type | address | rating |
-|---|---|---|---|
-| Shokolad | Cafe | ul. Lenina 12 | 4.7 |
-| Coffee House | Coffee shop | pr. Mira 5 | 4.3 |
-
----
-
-## License
-
-[Apache License 2.0](LICENSE.md)
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/Reinhart-py/2gis-scapper-for-b2b-data.git](https://github.com/Reinhart-py/2gis-scapper-for-b2b-data.git)
+   cd 2gis-scapper-for-b2b-data
