@@ -39,6 +39,30 @@ class Runner:
             for page in range(1, num_of_pages):
                 print(f"\n>>> SCRAPING PAGE {page} <<<")
 
+                # Find the scrollable container for the listings
+                scroll_container = None
+                for container_xpath in [
+                    "(//div[@class='_15gu4wr'])[3]",
+                    "(//div[@class='_15gu4wr'])[2]",
+                    "//div[contains(@class, 'sidebar')]",
+                ]:
+                    try:
+                        scroll_container = driver.find_element(By.XPATH, container_xpath)
+                        break
+                    except Exception:
+                        continue
+
+                # Scroll down in increments to force 2GIS to lazy-load all 12 cards
+                for _ in range(5):
+                    if scroll_container:
+                        driver.execute_script(
+                            "arguments[0].scrollTop += 700;", scroll_container
+                        )
+                    else:
+                        driver.execute_script("window.scrollBy(0, 700);")
+                    time.sleep(0.3)
+
+                # Fetch all cards now that DOM virtual items have mounted
                 cards = driver.find_elements(
                     By.XPATH,
                     "//div[@class='_1kf6gff'] | //div[contains(@class, '_1469e3a')]",
@@ -52,6 +76,12 @@ class Runner:
 
                 for idx, card in enumerate(cards, 1):
                     try:
+                        # Scroll the individual card into view
+                        driver.execute_script(
+                            "arguments[0].scrollIntoView({block: 'center'});", card
+                        )
+                        time.sleep(0.1)
+
                         card_lines = [
                             line.strip()
                             for line in card.text.split("\n")
@@ -67,9 +97,11 @@ class Runner:
                             else (card_lines[1] if len(card_lines) > 1 else "null")
                         )
 
+                        # Open drawer
                         driver.execute_script("arguments[0].click();", card)
-                        time.sleep(0.3)
+                        time.sleep(0.35)
 
+                        # Unmask phone digits
                         try:
                             btns = driver.find_elements(
                                 By.XPATH,
@@ -83,6 +115,7 @@ class Runner:
                         except Exception:
                             pass
 
+                        # Read revealed numbers
                         found_phones = []
                         tel_anchors = driver.find_elements(
                             By.XPATH, "//a[starts-with(@href, 'tel:')]"
@@ -111,12 +144,13 @@ class Runner:
                     except Exception:
                         continue
 
+                # Scroll to bottom and click pagination button
                 try:
                     next_btn = find(driver, XPATHS["next_page_btn"])
                     driver.execute_script(
                         "arguments[0].scrollIntoView(true);", next_btn
                     )
-                    time.sleep(0.3)
+                    time.sleep(0.4)
                     driver.execute_script("arguments[0].click();", next_btn)
                     time.sleep(2.5)
                 except Exception:
