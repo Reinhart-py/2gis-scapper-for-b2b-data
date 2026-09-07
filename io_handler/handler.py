@@ -2,7 +2,7 @@ import csv
 import logging
 from utils import ColumnData
 
-HEADERS = ["title", "phone_1", "phone_2", "phone_3", "address"]
+HEADERS = ["title", "category", "phone_1", "phone_2", "phone_3", "website", "address"]
 
 
 def write_csv_headers(file_path: str) -> None:
@@ -25,9 +25,11 @@ def write_to_csv(page_number: int, data: ColumnData, file_path: str) -> None:
         for m in range(len(data.title)):
             writer.writerow([
                 data.title[m],
+                data.category[m],
                 data.phone_1[m],
                 data.phone_2[m],
                 data.phone_3[m],
+                data.website[m],
                 data.address[m],
             ])
         f.flush()
