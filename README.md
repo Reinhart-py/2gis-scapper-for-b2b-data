@@ -41,18 +41,19 @@ Built on Selenium WebDriver, it handles dynamic drawer rendering, unmasks contac
    cd 2gis-scapper-for-b2b-data```
 
 2. Create and activate a virtual environment:
-   Windows (CMD):
+Windows (CMD):
     ```
     python -m venv .venv
     call .venv\Scripts\activate```
 
-   Linux / macOS:
+Linux / macOS:
      ```
      python3 -m venv .venv
      source .venv/bin/activate```
 
 3. Install dependencies:
-   pip install -r requirements.txt
+  ```
+  pip install -r requirements.txt ```
 
 ---
 
