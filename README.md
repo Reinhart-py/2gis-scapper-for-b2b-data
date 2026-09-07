@@ -8,11 +8,7 @@ Built on Selenium WebDriver, it handles dynamic drawer rendering, unmasks contac
 
 ## Features
 
-- Multi-Phone Extraction: Automatically separates primary and alternative contact lines into phone_1, phone_2, and phone_3.
-- Country Priority Sorting: Intelligently prioritizes official country-code prefixes (e.g., +971) into phone_1.
-- Dynamic Unmasking: Automatically detects and triggers hidden contact reveal buttons.
-- Fail-Safe Stream Writing: Appends and flushes each row directly to CSV in real time; stopping execution (Ctrl + C) never loses saved records.
-- Multi-Region Support: Switch between 2gis.ae, 2gis.ru, 2gis.kz, etc., using the -c flag.
+- Multi-Region Support like Switch between 2gis.ae, 2gis.ru, 2gis.kz, etc., using the -c flag.
 
 ---
 
