@@ -15,17 +15,19 @@ def initiate_cli_parser() -> argparse.Namespace:
         type=str,
         help="Target city (e.g., dubai, moscow, almaty)",
     )
+    # nargs='+' captures all remaining words into a single query list
     parser.add_argument(
         "query_string",
         type=str,
-        help="Search keyword (e.g., supermarkets, software)",
+        nargs="+",
+        help="Search keyword(s) (e.g., travel agencies, real estate, software)",
     )
     parser.add_argument(
         "-c",
         "--country",
         type=str,
         default="ae",
-        help="2GIS top-level domain country code: 'ae' for UAE, 'ru' for Russia, 'kz' for Kazakhstan. Default: 'ae'",
+        help="2GIS regional domain code: ae (UAE), ru (Russia), kz (Kazakhstan). Default: ae",
     )
     parser.add_argument(
         "-o",
