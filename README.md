@@ -45,7 +45,8 @@ Built on Selenium WebDriver, it handles dynamic drawer rendering, unmasks contac
 Windows (CMD):
     ```
     python -m venv .venv
-    call .venv\Scripts\activate```
+    call .venv\Scripts\activate
+    ```
 
 Linux / macOS:
      ```
