@@ -1,15 +1,18 @@
 import csv
 import logging
+import os
 from utils import ColumnData
 
 HEADERS = ["title", "category", "phone_1", "phone_2", "phone_3", "website", "address"]
 
 
 def write_csv_headers(file_path: str) -> None:
-    with open(file_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(HEADERS)
-        f.flush()
+    os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
+    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        with open(file_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(HEADERS)
+            f.flush()
 
 
 def append_single_row(file_path: str, row: list) -> None:
