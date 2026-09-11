@@ -15,7 +15,8 @@ XPATHS = {
     "result_count": "(//span[@class='_1xhlznaa'])[1]",
     "scroll_container_primary": "(//div[@class='_15gu4wr'])[3]",
     "scroll_container_fallback": "(//div[@class='_15gu4wr'])[2]",
-    "next_page_btn": "//div[@class='_5ocwns']//div[2]",
+    "next_page_btn": "//div[@class='_5ocwns']//div[2] | //div[contains(@class, 'pagination')]//div[last()]",
+    "close_drawer_btn": "//div[@class='_121p9rc'] | //button[@aria-label='Close'] | //div[contains(@class, 'close')]",
 }
 
 
@@ -26,18 +27,14 @@ def get_default_chrome_options() -> Options:
     options.add_argument("--disable-gpu")
     options.add_argument("--disable-software-rasterizer")
     options.add_argument("--disable-extensions")
-    options.add_argument("--disable-infobars")
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-background-networking")
-    options.add_argument("--disable-default-apps")
-    options.add_argument("--disable-sync")
-    options.add_argument("--no-first-run")
-    options.add_argument("--no-default-browser-check")
-    # Reduce disk and memory caching overhead
-    options.add_argument("--disk-cache-size=104857600")  # 100MB max cache
-    options.add_argument("--media-cache-size=104857600")
-    # Mute media audio to conserve pipeline memory
     options.add_argument("--mute-audio")
+    # Expose v8 garbage collector so we can trigger window.gc() from selenium
+    options.add_argument("--js-flags=--expose-gc")
+    # Restrict cache to 50MB so memory does not explode over 3000+ items
+    options.add_argument("--disk-cache-size=52428800")
+    options.add_argument("--media-cache-size=52428800")
     return options
 
 
@@ -50,9 +47,24 @@ def create_session(
     if service is None:
         service = webdriver.ChromeService()
     driver = webdriver.Chrome(options=options, service=service)
-    driver.set_page_load_timeout(45)
+    driver.set_page_load_timeout(60)
     driver.maximize_window()
     return driver
+
+
+def clean_dom_memory(driver: WebDriver) -> None:
+    """Invokes V8 GC and removes detached map tiles/cached elements to prevent browser crashes."""
+    try:
+        driver.execute_script("""
+            if (window.gc) {
+                window.gc();
+            }
+            // Remove heavy offscreen map canvases/svgs if any are lingering
+            const deadCanvases = document.querySelectorAll('canvas:not([width])');
+            deadCanvases.forEach(c => c.remove());
+        """)
+    except Exception:
+        pass
 
 
 def quit_session(driver: WebDriver | None) -> None:
