@@ -2,7 +2,7 @@ import logging
 from typing import TypeAlias
 
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.webdriver import WebDriver
@@ -24,6 +24,20 @@ def get_default_chrome_options() -> Options:
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-infobars")
+    options.add_argument("--disable-notifications")
+    options.add_argument("--disable-background-networking")
+    options.add_argument("--disable-default-apps")
+    options.add_argument("--disable-sync")
+    options.add_argument("--no-first-run")
+    options.add_argument("--no-default-browser-check")
+    # Reduce disk and memory caching overhead
+    options.add_argument("--disk-cache-size=104857600")  # 100MB max cache
+    options.add_argument("--media-cache-size=104857600")
+    # Mute media audio to conserve pipeline memory
+    options.add_argument("--mute-audio")
     return options
 
 
@@ -36,12 +50,17 @@ def create_session(
     if service is None:
         service = webdriver.ChromeService()
     driver = webdriver.Chrome(options=options, service=service)
+    driver.set_page_load_timeout(45)
     driver.maximize_window()
     return driver
 
 
-def quit_session(driver: WebDriver) -> None:
-    driver.quit()
+def quit_session(driver: WebDriver | None) -> None:
+    if driver is not None:
+        try:
+            driver.quit()
+        except Exception:
+            pass
 
 
 def navigate(url: str, driver: WebDriver) -> None:
