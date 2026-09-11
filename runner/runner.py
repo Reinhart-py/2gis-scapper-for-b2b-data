@@ -4,7 +4,7 @@ from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from executor import XPATHS, create_session, find, navigate, quit_session
 from io_handler.handler import write_csv_headers, append_single_row
-from utils import build_search_query
+from utils import build_search_query, save_state, clear_state
 
 
 class Runner:
@@ -13,7 +13,9 @@ class Runner:
         self.city_name: str = config.city_name
         self.query_string: str = config.query_string
         self.output_dir: str = config.output_path
-        self.recycle_every_pages: int = 25  # Restarts browser every 25 pages (~300 records)
+        self.start_page: int = getattr(config, "start_page", 1)
+        self.initial_saved: int = getattr(config, "initial_saved", 0)
+        self.recycle_every_pages: int = 25  # Chrome recycle threshold
 
     def get_url(self, page: int = 1) -> str:
         return build_search_query(
@@ -27,34 +29,37 @@ class Runner:
         write_csv_headers(self.output_dir)
 
         driver = None
-        current_page = 1
-        num_of_pages = 50
-        total_saved = 0
+        current_page = self.start_page
+        num_of_pages = current_page + 50
+        total_saved = self.initial_saved
 
-        # Initial bootstrap session to calculate total page count
-        try:
-            driver = create_session()
-            driver.implicitly_wait(0)
-            initial_url = self.get_url(1)
-            print(f"Opening 2GIS: {initial_url}")
-            navigate(driver=driver, url=initial_url)
-            time.sleep(4)
-
+        # Bootstrap session to inspect total pages if starting from page 1
+        if self.start_page == 1:
             try:
-                page_count_element = find(driver, XPATHS["result_count"])
-                num_of_pages = (int(page_count_element.text.replace(" ", "")) // 12) + 3
-            except Exception:
-                num_of_pages = 1000  # Default higher bound for large categories
-            print(f"Detected total target pages: ~{num_of_pages - 2}")
-        except Exception as e:
-            print(f"Initialization error: {e}")
-        finally:
-            quit_session(driver)
-            driver = None
+                driver = create_session()
+                driver.implicitly_wait(0)
+                initial_url = self.get_url(1)
+                print(f"[Init] Opening 2GIS: {initial_url}")
+                navigate(driver=driver, url=initial_url)
+                time.sleep(3.5)
+
+                try:
+                    page_count_element = find(driver, XPATHS["result_count"])
+                    num_of_pages = (int(page_count_element.text.replace(" ", "")) // 12) + 3
+                except Exception:
+                    num_of_pages = 1000
+                print(f"[Init] Total detected pages: ~{num_of_pages - 2}")
+            except Exception as e:
+                print(f"[!] Warning checking page count: {e}")
+            finally:
+                quit_session(driver)
+                driver = None
+        else:
+            num_of_pages = 1000
 
         while current_page < num_of_pages:
             batch_end_page = min(current_page + self.recycle_every_pages, num_of_pages)
-            print(f"\n[Lifecycle] Launching fresh Chrome instance for pages {current_page} to {batch_end_page - 1}...")
+            print(f"\n[Lifecycle] Starting fresh Chrome process (Pages {current_page} to {batch_end_page - 1})...")
 
             try:
                 driver = create_session()
@@ -65,9 +70,9 @@ class Runner:
                 time.sleep(3.5)
 
                 while current_page < batch_end_page:
-                    print(f"\n>>> SCRAPING PAGE {current_page} (Total saved so far: {total_saved}) <<<")
+                    print(f"\n>>> SCRAPING PAGE {current_page} | Total Collected: {total_saved} <<<")
 
-                    # Locate left scroll container
+                    # Locate scrollable drawer
                     scroll_container = None
                     for container_xpath in [
                         "(//div[@class='_15gu4wr'])[3]",
@@ -80,14 +85,14 @@ class Runner:
                         except Exception:
                             continue
 
-                    # Scroll incrementally to render virtualized cards
+                    # Pre-scroll down to render lazy cards
                     for _ in range(5):
                         try:
                             if scroll_container:
                                 driver.execute_script("arguments[0].scrollTop += 700;", scroll_container)
                             else:
                                 driver.execute_script("window.scrollBy(0, 700);")
-                            time.sleep(0.3)
+                            time.sleep(0.25)
                         except Exception:
                             break
 
@@ -97,6 +102,11 @@ class Runner:
                     )
                     if not cards:
                         cards = driver.find_elements(By.XPATH, "//a[contains(@href, '/firm/')]")
+
+                    if not cards:
+                        print(f"[*] No listings found on page {current_page}. Reached the end.")
+                        current_page = num_of_pages
+                        break
 
                     print(f"Found {len(cards)} listings on page {current_page}")
 
@@ -117,17 +127,17 @@ class Runner:
 
                             address = "null"
                             for line in card_lines[1:]:
-                                if any(k in line.lower() for k in ["street", "road", "tower", "building", "floor", "bay", "dubai", "industrial"]):
+                                if any(k in line.lower() for k in ["street", "road", "tower", "building", "floor", "bay", "dubai", "abu dhabi", "industrial"]):
                                     address = line
                                     break
                             if address == "null" and len(card_lines) > 2:
                                 address = card_lines[2]
 
-                            # Open business drawer
+                            # Open firm profile
                             driver.execute_script("arguments[0].click();", card)
                             time.sleep(0.35)
 
-                            # Unmask phone digits
+                            # Reveal hidden phone digits
                             try:
                                 btns = driver.find_elements(
                                     By.XPATH,
@@ -195,32 +205,42 @@ class Runner:
                                 self.output_dir, [title, category, p1, p2, p3, website, address]
                             )
                             total_saved += 1
-                            print(f"[{total_saved}] {title[:20]} | Cat: {category[:20]} | {p1} | {website}")
+                            print(f"[{total_saved}] {title[:22]} | {p1} | {website}")
 
                         except Exception:
                             continue
 
+                    # Save state checkpoint after every successfully scraped page
+                    save_state(
+                        city=self.city_name,
+                        query=self.query_string,
+                        country=self.country_code,
+                        page=current_page,
+                        total_saved=total_saved,
+                        output_path=self.output_dir,
+                    )
+
                     current_page += 1
 
-                    # Click next page button if continuing in same batch
+                    # Pagination transition
                     if current_page < batch_end_page:
                         try:
                             next_btn = find(driver, XPATHS["next_page_btn"])
                             driver.execute_script("arguments[0].scrollIntoView(true);", next_btn)
-                            time.sleep(0.4)
+                            time.sleep(0.3)
                             driver.execute_script("arguments[0].click();", next_btn)
                             time.sleep(2.5)
                         except Exception:
-                            # Fallback: navigate directly to next page URL
                             driver.get(self.get_url(current_page))
                             time.sleep(3.0)
 
             except (WebDriverException, Exception) as crash_err:
-                print(f"[Warning] Session crashed or encountered error at page {current_page}: {crash_err}")
-                print("[Recovery] Recycling browser session and resuming...")
-                time.sleep(3)
+                print(f"[!] Session interrupted at page {current_page}: {crash_err}")
+                print("[!] Recycling browser session and resuming at current page...")
+                time.sleep(2)
             finally:
                 quit_session(driver)
                 driver = None
 
-        print(f"\nScraping complete. Total businesses saved: {total_saved}")
+        print(f"\n[✓] Job Finished! Total businesses saved: {total_saved}")
+        clear_state()
