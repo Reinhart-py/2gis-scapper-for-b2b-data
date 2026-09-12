@@ -1,0 +1,18 @@
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local scraper session state & outputs
+.scraper_state.json
+data/*.csv
+data/temp.txt
+
+# Distribution build artifacts
+build/
+dist/
+*.egg-info/
