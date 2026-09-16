@@ -3,7 +3,7 @@ import os
 import sys
 from argparse import Namespace
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import questionary
 from questionary import Style
@@ -16,6 +16,7 @@ from rich.text import Text
 from .state_manager import load_all_history, push_history_checkpoint
 
 console = Console()
+STATE_FILE = ".scraper_state.json"
 
 CUSTOM_STYLE = Style([
     ("qmark", "fg:#00ffff bold"),
@@ -33,6 +34,28 @@ CUSTOM_STYLE = Style([
 def get_default_download_path(filename: str) -> str:
     downloads = Path.home() / "Downloads"
     return str(downloads / filename)
+
+
+def save_state(city: str, query: str, country: str, page: int, total_saved: int, output_path: str, target_count: int) -> None:
+    push_history_checkpoint({
+        "engine": "2gis",
+        "target": f"{city}:{query}",
+        "city_name": city,
+        "query_string": query,
+        "country": country,
+        "output_path": output_path,
+        "last_step": page,
+        "total_saved": total_saved,
+        "target_count": target_count,
+    })
+
+
+def clear_state() -> None:
+    if os.path.exists(STATE_FILE):
+        try:
+            os.remove(STATE_FILE)
+        except Exception:
+            pass
 
 
 def render_banner() -> None:
@@ -117,7 +140,7 @@ def history_menu() -> Optional[Namespace]:
 
     return Namespace(
         engine=selected["engine"],
-        target=selected["target"],
+        target=selected.get("target", ""),
         city_name=selected.get("city_name", "dubai"),
         query_string=selected.get("query_string", ""),
         country=selected.get("country", "ae"),
