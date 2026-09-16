@@ -3,15 +3,18 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "2gis-lead"
-version = "0.2.0"
-description = "CLI scraper for 2GIS B2B listings and contact details"
+name = "lead-Gen"
+version = "0.3.0"
+description =  CLI scraper for 2GIS and Google Maps leads"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "selenium>=4.15.0",
+    "webdriver-manager>=4.0.1",
     "questionary>=2.0.1",
-    "rich>=13.7.0"
+    "rich>=13.7.0",
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.2"
 ]
 
 [project.scripts]
@@ -22,5 +25,5 @@ py-modules = ["main"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["executor*", "runner*", "io_handler*", "utils*"]
+include = ["executor*", "runner*", "io_handler*", "utils*", "gmaps*"]
 exclude = ["data*"]
