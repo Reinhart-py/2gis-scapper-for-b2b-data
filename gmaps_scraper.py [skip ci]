@@ -1,0 +1,443 @@
+import os
+import sys
+import time
+import json
+import random
+import csv
+import threading
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+CYAN = "\033[96m"
+MAGENTA = "\033[95m"
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+RED = "\033[91m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
+STATE_FILE = "data/gmaps_state.json"
+HISTORY_FILE = "data/gmaps_history.json"
+DEFAULT_OUTPUT = "data/gmaps_leads.csv"
+CSV_LOCK = threading.Lock()
+HISTORY_LOCK = threading.Lock()
+
+CSV_HEADERS = [
+    "keyword_or_url",
+    "name",
+    "category",
+    "phone_1",
+    "phone_2",
+    "phone_3",
+    "website",
+    "address",
+    "rating",
+    "reviews_count",
+    "open_hours",
+]
+
+
+def clear_screen():
+    os.system("cls" if os.name == "nt" else "clear")
+
+
+def render_title():
+    clear_screen()
+    print(CYAN + BOLD + r"""
+  ____                 _        __  __                  ____                                  
+ / ___| ___   ___   __| | ___  |  \/  | __ _ _ __  ___ / ___|  ___ _ __ __ _ _ __   ___ _ __ 
+| |  _ / _ \ / _ \ / _` |/ _ \ | |\/| |/ _` | '_ \/ __|\___ \ / __| '__/ _` | '_ \ / _ \ '__|
+| |_| | (_) | (_) | (_| |  __/ | |  | | (_| | |_) \__ \ ___) | (__| | | (_| | |_) |  __/ |   
+ \____|\___/ \___/ \__,_|\___| |_|  |_|\__,_| .__/|___/|____/ \___|_|  \__,_| .__/ \___|_|   
+                                            |_|                              |_|              
+    """ + RESET)
+
+
+def render_architect():
+    render_title()
+    print(MAGENTA + BOLD + """
+    THE ARCHITECT
+    =============
+    
+    Reinhart
+    --------
+    Telegram: @kiri0507
+    Instagram: @reinhart.dev
+    
+    "We do not do it because it's easy.
+     We do it because we thought it would be easy."
+    """ + RESET)
+    input(f"\n{CYAN}Press Enter to return to main menu...{RESET}")
+
+
+def ensure_data_dir():
+    os.makedirs("data", exist_ok=True)
+
+
+def load_history():
+    ensure_data_dir()
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+
+def save_history_entry(session_name, targets, completed_idx, output_file):
+    ensure_data_dir()
+    with HISTORY_LOCK:
+        history = load_history()
+        entry = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "session_name": session_name,
+            "total_targets": len(targets),
+            "completed_index": completed_idx,
+            "output_file": output_file,
+            "targets": targets,
+        }
+        history = [h for h in history if h.get("session_name") != session_name]
+        history.insert(0, entry)
+        history = history[:10]
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=2)
+
+
+def write_csv_headers(file_path):
+    ensure_data_dir()
+    with CSV_LOCK:
+        if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+            with open(file_path, "w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(CSV_HEADERS)
+                f.flush()
+
+
+def append_csv_row(file_path, row):
+    ensure_data_dir()
+    with CSV_LOCK:
+        with open(file_path, "a", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(row)
+            f.flush()
+
+
+def parse_input_file(file_path):
+    targets = []
+    if not os.path.exists(file_path):
+        return targets
+
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".txt":
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            targets = [line.strip() for line in f.readlines() if line.strip()]
+    elif ext == ".csv":
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if row and row[0].strip():
+                    targets.append(row[0].strip())
+    elif ext in [".xlsx", ".xls"]:
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(file_path, data_only=True)
+            sheet = wb.active
+            for row in sheet.iter_rows(values_only=True):
+                if row and row[0] is not None and str(row[0]).strip():
+                    targets.append(str(row[0]).strip())
+        except ImportError:
+            print(f"{RED}Install openpyxl for Excel files: pip install openpyxl{RESET}")
+    return targets
+
+
+def create_gmaps_driver():
+    options = webdriver.ChromeOptions()
+    options.add_argument("--start-maximized")
+    options.add_argument("--disable-notifications")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--log-level=3")
+    options.add_argument("--lang=en-US")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
+
+    driver = webdriver.Chrome(options=options)
+    driver.execute_cdp_cmd(
+        "Page.addScriptToEvaluateOnNewDocument",
+        {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
+    )
+    return driver
+
+
+def handle_consent(driver):
+    try:
+        consent_buttons = driver.find_elements(
+            By.XPATH,
+            "//button[contains(., 'Accept all') or contains(., 'Agree') or contains(., 'I agree') or contains(., 'Aceptar')]",
+        )
+        if consent_buttons:
+            consent_buttons[0].click()
+            time.sleep(2)
+    except Exception:
+        pass
+
+
+def scrape_single_profile(driver, target_str):
+    name, category, website, address = "null", "null", "null", "null"
+    rating, reviews, hours = "null", "null", "null"
+    phone_1, phone_2, phone_3 = "null", "null", "null"
+
+    try:
+        name_el = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.XPATH, "//h1[contains(@class, 'DUwDvf')]"))
+        )
+        name = name_el.text.strip()
+    except Exception:
+        try:
+            name = driver.find_element(By.XPATH, "//h1").text.strip()
+        except Exception:
+            pass
+
+    if not name or name == "null":
+        return None
+
+    try:
+        cat_btn = driver.find_element(
+            By.XPATH, "//button[contains(@jsaction, 'pane.rating.category') or contains(@class, 'DkEaL')]"
+        )
+        category = cat_btn.text.strip()
+    except Exception:
+        pass
+
+    try:
+        star_span = driver.find_element(By.XPATH, "//div[contains(@class, 'F7nice')]//span[@aria-hidden='true']")
+        rating = star_span.text.strip()
+        rev_span = driver.find_element(By.XPATH, "//div[contains(@class, 'F7nice')]//span[contains(@aria-label, 'reviews') or contains(@aria-label, 'review')]")
+        reviews = rev_span.text.strip("() ")
+    except Exception:
+        pass
+
+    try:
+        addr_btn = driver.find_element(By.XPATH, "//button[contains(@data-item-id, 'address')]")
+        address = addr_btn.get_attribute("aria-label").replace("Address:", "").replace("Dirección:", "").strip()
+    except Exception:
+        pass
+
+    try:
+        web_btn = driver.find_element(By.XPATH, "//a[contains(@data-item-id, 'authority')]")
+        website = web_btn.get_attribute("href")
+    except Exception:
+        pass
+
+    found_phones = []
+    try:
+        phone_btn = driver.find_element(By.XPATH, "//button[contains(@data-item-id, 'phone')]")
+        raw_phone = phone_btn.get_attribute("aria-label").replace("Phone:", "").replace("Teléfono:", "").strip()
+        if raw_phone:
+            found_phones.append(raw_phone)
+    except Exception:
+        pass
+
+    tel_links = driver.find_elements(By.XPATH, "//a[starts-with(@href, 'tel:')]")
+    for t in tel_links:
+        num = t.get_attribute("href").replace("tel:", "").strip()
+        if num and num not in found_phones:
+            found_phones.append(num)
+
+    if len(found_phones) > 0:
+        phone_1 = found_phones[0]
+    if len(found_phones) > 1:
+        phone_2 = found_phones[1]
+    if len(found_phones) > 2:
+        phone_3 = found_phones[2]
+
+    try:
+        hours_table = driver.find_element(By.XPATH, "//div[contains(@aria-label, 'Hours') or contains(@class, 't39EBd')]")
+        hours = hours_table.get_attribute("aria-label") or hours_table.text.replace("\n", " ; ")
+    except Exception:
+        pass
+
+    return [target_str, name, category, phone_1, phone_2, phone_3, website, address, rating, reviews, hours]
+
+
+def scroll_results_panel(driver):
+    try:
+        panel = driver.find_element(By.XPATH, "//div[@role='feed']")
+    except Exception:
+        return []
+
+    last_height = driver.execute_script("return arguments[0].scrollHeight", panel)
+    consecutive_scrolls = 0
+
+    while consecutive_scrolls < 10:
+        scroll_step = random.randint(500, 850)
+        driver.execute_script(f"arguments[0].scrollBy(0, {scroll_step});", panel)
+        time.sleep(random.uniform(1.2, 1.8))
+
+        new_height = driver.execute_script("return arguments[0].scrollHeight", panel)
+        if new_height == last_height:
+            consecutive_scrolls += 1
+            if driver.find_elements(By.XPATH, "//*[contains(text(), \"You've reached the end of the list\")]"):
+                break
+        else:
+            consecutive_scrolls = 0
+            last_height = new_height
+
+    links = driver.find_elements(By.XPATH, "//div[@role='feed']//a[contains(@href, '/maps/place/')]")
+    return [l.get_attribute("href") for l in links if l.get_attribute("href")]
+
+
+def scrape_target_worker(driver, target, output_file, worker_id=1):
+    print(f"{CYAN}[Worker {worker_id}] Processing: {BOLD}{target}{RESET}")
+    if target.startswith("http://") or target.startswith("https://"):
+        driver.get(target)
+        time.sleep(random.uniform(2.5, 3.5))
+        row = scrape_single_profile(driver, target)
+        if row:
+            append_csv_row(output_file, row)
+            print(f"{GREEN}[Worker {worker_id}] Saved: {row[1]} | {row[3]}{RESET}")
+    else:
+        try:
+            search_box = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//input[@id='searchboxinput']"))
+            )
+            search_box.click()
+            search_box.clear()
+            time.sleep(0.3)
+            for char in target:
+                search_box.send_keys(char)
+                time.sleep(random.uniform(0.03, 0.07))
+            time.sleep(0.3)
+            search_box.send_keys(Keys.ENTER)
+            time.sleep(random.uniform(3.0, 4.0))
+
+            if "/maps/place/" in driver.current_url:
+                row = scrape_single_profile(driver, target)
+                if row:
+                    append_csv_row(output_file, row)
+                    print(f"{GREEN}[Worker {worker_id}] Saved: {row[1]} | {row[3]}{RESET}")
+            else:
+                place_links = scroll_results_panel(driver)
+                print(f"{YELLOW}[Worker {worker_id}] Found {len(place_links)} places for '{target}'{RESET}")
+                for p_idx, plink in enumerate(place_links, 1):
+                    driver.get(plink)
+                    time.sleep(random.uniform(1.8, 2.4))
+                    row = scrape_single_profile(driver, target)
+                    if row:
+                        append_csv_row(output_file, row)
+                        print(f"{GREEN}[Worker {worker_id}] [{p_idx}/{len(place_links)}] Saved: {row[1][:22]} | {row[3]}{RESET}")
+        except Exception as ex:
+            print(f"{RED}[Worker {worker_id}] Failed target '{target}': {ex}{RESET}")
+
+
+def worker_thread_job(worker_id, chunk_targets, session_name, output_file, all_targets):
+    driver = create_gmaps_driver()
+    driver.get("https://www.google.com/maps?hl=en")
+    handle_consent(driver)
+    time.sleep(2)
+
+    try:
+        for target in chunk_targets:
+            scrape_target_worker(driver, target, output_file, worker_id)
+            save_history_entry(session_name, all_targets, len(chunk_targets), output_file)
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+
+
+def execute_scraping_job_parallel(session_name, targets, start_index, output_file, num_workers=1):
+    write_csv_headers(output_file)
+    active_targets = targets[start_index:]
+    if not active_targets:
+        print(f"{YELLOW}All targets already processed in this session.{RESET}")
+        return
+
+    num_workers = max(1, min(num_workers, len(active_targets)))
+    print(f"\n{GREEN}Launching {BOLD}{num_workers}{RESET}{GREEN} parallel worker(s) for {len(active_targets)} targets...{RESET}")
+
+    chunks = [active_targets[i::num_workers] for i in range(num_workers)]
+
+    threads = []
+    for w_id in range(num_workers):
+        t = threading.Thread(
+            target=worker_thread_job,
+            args=(w_id + 1, chunks[w_id], session_name, output_file, targets),
+        )
+        threads.append(t)
+        t.start()
+        time.sleep(1.5)
+
+    for t in threads:
+        t.join()
+
+    print(f"\n{GREEN}Scraping complete! Results saved to: {output_file}{RESET}")
+
+
+def main():
+    while True:
+        render_title()
+        print(f"{BOLD}GOOGLE MAPS LEAD GENERATION{RESET}")
+        print("1. Single Target Scrape (Keyword or Google Maps URL)")
+        print("2. Batch Scrape (.txt, .csv, .xlsx) with Parallel Workers")
+        print("3. Session History & Checkpoint Resume")
+        print("4. About / Architect Info")
+        print("5. [Back to Engine Selector]")
+
+        choice = input(f"\n{CYAN}Choose option (1-5): {RESET}").strip()
+
+        if choice == "1":
+            kw = input(f"{YELLOW}Enter keyword or Maps URL: {RESET}").strip()
+            if kw:
+                sess_name = f"single_{int(time.time())}"
+                execute_scraping_job_parallel(sess_name, [kw], 0, DEFAULT_OUTPUT, num_workers=1)
+                input(f"\n{CYAN}Press Enter to return...{RESET}")
+        elif choice == "2":
+            fpath = input(f"{YELLOW}Enter path to batch file: {RESET}").strip()
+            if not os.path.exists(fpath):
+                print(f"{RED}File not found!{RESET}")
+                time.sleep(1.5)
+                continue
+            targets = parse_input_file(fpath)
+            if not targets:
+                print(f"{RED}File is empty!{RESET}")
+                time.sleep(1.5)
+                continue
+            w_str = input(f"{CYAN}Number of parallel browser workers [default: 2]: {RESET}").strip()
+            workers = int(w_str) if w_str.isdigit() and int(w_str) > 0 else 2
+            out = input(f"{CYAN}Output CSV [default: {DEFAULT_OUTPUT}]: {RESET}").strip() or DEFAULT_OUTPUT
+            sess_name = f"batch_{os.path.splitext(os.path.basename(fpath))[0]}_{int(time.time())}"
+            execute_scraping_job_parallel(sess_name, targets, 0, out, num_workers=workers)
+            input(f"\n{CYAN}Press Enter to return...{RESET}")
+        elif choice == "3":
+            history = load_history()
+            if not history:
+                print(f"{YELLOW}No saved sessions.{RESET}")
+                input(f"\n{CYAN}Press Enter to return...{RESET}")
+                continue
+            for idx, entry in enumerate(history, 1):
+                print(f" {idx}. [{entry.get('timestamp')}] {entry.get('session_name')} - {entry.get('total_targets')} targets")
+            sel_idx = input(f"\n{CYAN}Select session to resume (or 'b' for back): {RESET}").strip()
+            if sel_idx.isdigit() and 1 <= int(sel_idx) <= len(history):
+                sel = history[int(sel_idx) - 1]
+                w_str = input(f"{CYAN}Number of parallel workers [default: 2]: {RESET}").strip()
+                workers = int(w_str) if w_str.isdigit() and int(w_str) > 0 else 2
+                execute_scraping_job_parallel(
+                    sel.get("session_name"),
+                    sel.get("targets", []),
+                    sel.get("completed_index", 0),
+                    sel.get("output_file", DEFAULT_OUTPUT),
+                    num_workers=workers,
+                )
+                input(f"\n{CYAN}Press Enter to return...{RESET}")
+        elif choice == "4":
+            render_architect()
+        elif choice == "5":
+            break
