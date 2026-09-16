@@ -1,9 +1,9 @@
-import json
 import logging
 import os
+import sys
 from argparse import Namespace
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import questionary
 from questionary import Style
@@ -13,12 +13,10 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from .loggers import parse_log_level
+from .state_manager import load_all_history, push_history_checkpoint
 
 console = Console()
-STATE_FILE = ".scraper_state.json"
 
-# Premium custom style for questionary prompts
 CUSTOM_STYLE = Style([
     ("qmark", "fg:#00ffff bold"),
     ("question", "fg:#ffffff bold"),
@@ -37,202 +35,222 @@ def get_default_download_path(filename: str) -> str:
     return str(downloads / filename)
 
 
-def load_state() -> Optional[Dict[str, Any]]:
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return None
-    return None
-
-
-def save_state(
-    city: str,
-    query: str,
-    country: str,
-    page: int,
-    total_saved: int,
-    output_path: str,
-    target_count: int,
-) -> None:
-    data = {
-        "city_name": city,
-        "query_string": query,
-        "country": country,
-        "last_page": page,
-        "total_saved": total_saved,
-        "output_path": output_path,
-        "target_count": target_count,
-    }
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-
-
-def clear_state() -> None:
-    if os.path.exists(STATE_FILE):
-        try:
-            os.remove(STATE_FILE)
-        except Exception:
-            pass
-
-
 def render_banner() -> None:
     console.clear()
-    
     ascii_art = """
- ██████╗  ██████╗ ██╗███████╗    ███████╗ ██████╗██████╗  █████╗ ██████╗ ███████╗██████╗ 
-██╔════╝ ██╔════╝ ██║██╔════╝    ██╔════╝██╔════╝██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗
-╚█████╗  ██║  ███╗██║███████╗    ███████╗██║     ██████╔╝███████║██████╔╝█████╗  ██████╔╝
- ╚════██╗██║   ██║██║╚════██║    ╚════██║██║     ██╔══██╗██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗
-██████╔╝╚██████╔╝██║███████║    ███████║╚██████╗██║  ██║██║  ██║██║     ███████╗██║  ██║
-╚═════╝  ╚═════╝ ╚═╝╚══════╝    ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝
+ ██████╗ ███████╗██████╗  ██████╗ ██████╗     ███████╗██╗   ██╗██╗████████╗███████╗
+██╔════╝ ██╔════╝██╔══██╗██╔═══██╗██╔══██╗    ██╔════╝██║   ██║██║╚══██╔══╝██╔════╝
+██║  ███╗█████╗  ██████╔╝██║   ██║██████╔╝    ███████╗██║   ██║██║   ██║   █████╗  
+██║   ██║██╔══╝  ██╔══██╗██║   ██║██╔═══╝     ╚════██║██║   ██║██║   ██║   ██╔══╝  
+╚██████╔╝███████╗██████╔╝╚██████╔╝██║         ███████║╚██████╔╝██║   ██║   ███████╗
+ ╚═════╝ ╚══════╝╚═════╝  ╚═════╝ ╚═╝         ╚══════╝ ╚═════╝ ╚═╝   ╚═╝   ╚══════╝
     """
-    
     gradient_text = Text(ascii_art)
     gradient_text.stylize("bold cyan")
 
-    author_markup = (
-        "[dim]⚡ Built for high-volume, reliable B2B extraction[/dim]\n\n"
-        "[bold white]Developed by: [/bold white]"
-        "[link=https://reinhart.pages.dev/][bold magenta underline]Reinhart aka kiri[/bold magenta underline][/link]"
-    )
-
     panel = Panel(
         Align.center(gradient_text),
-        title="[bold #39ff14]◈ v0.2.0 • CORE EDITION ◈[/bold #39ff14]",
-        subtitle=author_markup,
+        title="[bold #39ff14]◈ DUAL-ENGINE INTELLIGENCE v0.3.0 ◈[/bold #39ff14]",
+        subtitle="[bold white]Developed by: [/bold white][link=https://reinhart.pages.dev/][bold magenta underline]Reinhart aka kiri[/bold magenta underline][/link]",
         subtitle_align="center",
         border_style="bold #00e5ff",
         padding=(0, 2),
     )
     console.print(panel)
-    console.print("")
 
 
-def prompt_user_wizard(existing_state: Optional[Dict[str, Any]] = None) -> Namespace:
-    render_banner()
+def display_architect_info() -> None:
+    console.clear()
+    text = """
+[bold #DEADED]
+    THE ARCHITECT
+    =============
+    
+    Reinhart aka kiri
+    -----------------
+    Website:   https://reinhart.pages.dev/
+    Telegram:  @kiri0507
+    Instagram: @reinhart.dev
+    
+    "We do not do it because it's easy.
+     We do it because we thought it would be easy."
+[/bold #DEADED]
+    """
+    console.print(Panel(Align.center(text), border_style="magenta"))
+    questionary.press_any_key_to_continue(message="Press any key to return...").ask()
 
-    # Session recovery prompt
-    if existing_state:
-        c_city = existing_state.get("city_name", "unknown")
-        c_query = existing_state.get("query_string", "unknown")
-        c_page = existing_state.get("last_page", 1)
-        c_saved = existing_state.get("total_saved", 0)
-        c_target = existing_state.get("target_count", 0)
-        c_dest = existing_state.get("output_path", "./data/raw.csv")
 
-        table = Table(title="◈ UNFINISHED MISSION DETECTED ◈", border_style="cyan", show_header=False)
-        table.add_column("Field", style="bold yellow")
-        table.add_column("Value", style="bold white")
+def history_menu() -> Optional[Namespace]:
+    history = load_all_history()
+    if not history:
+        console.print("[yellow]No execution checkpoints recorded yet.[/yellow]")
+        questionary.press_any_key_to_continue().ask()
+        return None
 
-        target_label = f"{c_target} leads" if c_target > 0 else "Unlimited"
-        table.add_row("City / Region", c_city.title())
-        table.add_row("Keyword", c_query)
-        table.add_row("Progress", f"{c_saved} leads (Stopped at Page {c_page})")
-        table.add_row("Target", target_label)
-        table.add_row("Destination", c_dest)
+    table = Table(title="◈ LAST 10 EXECUTION CHECKPOINTS ◈", border_style="cyan")
+    table.add_column("Index", style="bold yellow")
+    table.add_column("Engine", style="bold green")
+    table.add_column("Target / Query", style="white")
+    table.add_column("Checkpoint", style="cyan")
+    table.add_column("Collected", style="bold magenta")
 
-        console.print(table)
-        console.print("")
+    choices = []
+    for idx, item in enumerate(history):
+        table.add_row(
+            str(idx + 1),
+            item.get("engine", "unknown").upper(),
+            str(item.get("target", ""))[:30],
+            f"Step/Page {item.get('last_step', 1)}",
+            f"{item.get('total_saved', 0)} leads",
+        )
+        choices.append(questionary.Choice(
+            title=f"[{item.get('engine').upper()}] {item.get('target')} (Saved: {item.get('total_saved')})",
+            value=item,
+        ))
 
-        should_resume = questionary.confirm(
-            "Resume previous scraping mission?",
-            default=True,
-            style=CUSTOM_STYLE,
-        ).ask()
+    console.print(table)
+    choices.append(questionary.Choice(title="[Back to Main Menu]", value="BACK"))
 
-        if should_resume:
-            return Namespace(
-                city_name=c_city,
-                query_string=c_query,
-                country=existing_state.get("country", "ae"),
-                output_path=c_dest,
-                start_page=c_page + 1,
-                initial_saved=c_saved,
-                target_count=c_target,
-                auto_recover=True,
-                log=logging.INFO,
-            )
-        else:
-            clear_state()
-            console.print("[dim yellow]✦ Session state purged. Launching configuration wizard...[/dim yellow]\n")
-
-    # Step 1: Target City
-    city_name = questionary.select(
-        "Select Target City:",
-        choices=[
-            "Abu Dhabi",
-            "Dubai",
-            "Sharjah",
-            "Al Ain",
-            "Ajman",
-            "Other (Custom)",
-        ],
-        default="Abu Dhabi",
-        style=CUSTOM_STYLE,
-    ).ask()
-
-    if not city_name:
-        raise SystemExit(0)
-
-    if city_name == "Other (Custom)":
-        city_name = questionary.text("Enter City Name:", style=CUSTOM_STYLE).ask().strip().lower()
-    else:
-        city_name = city_name.strip().lower()
-
-    # Step 2: Query String
-    query_string = questionary.text(
-        "Enter Target Keyword (e.g., software, restaurants, clinics):",
-        validate=lambda t: True if len(t.strip()) > 0 else "Keyword cannot be empty!",
-        style=CUSTOM_STYLE,
-    ).ask().strip()
-
-    # Step 3: Domain
-    country = questionary.select(
-        "Select 2GIS Regional Domain:",
-        choices=[
-            questionary.Choice("UAE (2gis.ae)", value="ae"),
-            questionary.Choice("Russia (2gis.ru)", value="ru"),
-            questionary.Choice("Kazakhstan (2gis.kz)", value="kz"),
-        ],
-        default="ae",
-        style=CUSTOM_STYLE,
-    ).ask()
-
-    # Step 4: Target Leads
-    target_str = questionary.text(
-        "Target number of leads to collect (0 for unlimited):",
-        default="5000",
-        style=CUSTOM_STYLE,
-    ).ask().strip()
-    target_count = int(target_str) if target_str.isdigit() else 0
-
-    # Step 5: Save Destination
-    default_filename = f"{city_name}_{query_string.replace(' ', '_')}.csv"
-    default_dest = get_default_download_path(default_filename)
-
-    output_path = questionary.text(
-        "Output CSV Path (Defaults directly to Downloads):",
-        default=default_dest,
-        style=CUSTOM_STYLE,
-    ).ask().strip()
-
-    console.print("\n[bold green]✔ Parameters initialized! Spawning Chromium engine...[/bold green]\n")
+    selected = questionary.select("Select a checkpoint to resume:", choices=choices, style=CUSTOM_STYLE).ask()
+    if selected == "BACK" or not selected:
+        return None
 
     return Namespace(
-        city_name=city_name,
-        query_string=query_string,
+        engine=selected["engine"],
+        target=selected["target"],
+        city_name=selected.get("city_name", "dubai"),
+        query_string=selected.get("query_string", ""),
+        country=selected.get("country", "ae"),
+        output_path=selected.get("output_path", get_default_download_path("export.csv")),
+        start_step=selected.get("last_step", 1),
+        initial_saved=selected.get("total_saved", 0),
+        target_count=selected.get("target_count", 0),
+    )
+
+
+def prompt_2gis_wizard() -> Optional[Namespace]:
+    city = questionary.select(
+        "Select Target City:",
+        choices=["Abu Dhabi", "Dubai", "Sharjah", "Al Ain", "Ajman", "Other (Custom)", "[Back]"],
+        style=CUSTOM_STYLE,
+    ).ask()
+    if city == "[Back]" or not city:
+        return None
+
+    if city == "Other (Custom)":
+        city = questionary.text("Enter City Name:", style=CUSTOM_STYLE).ask().strip().lower()
+    else:
+        city = city.strip().lower()
+
+    query = questionary.text("Enter Keyword (e.g. software, hotels):", style=CUSTOM_STYLE).ask().strip()
+    country = questionary.select("Select Domain:", choices=[
+        questionary.Choice("UAE (2gis.ae)", value="ae"),
+        questionary.Choice("Russia (2gis.ru)", value="ru"),
+        questionary.Choice("Kazakhstan (2gis.kz)", value="kz"),
+    ], style=CUSTOM_STYLE).ask()
+
+    target_str = questionary.text("Target leads limit (0 for unlimited):", default="2000", style=CUSTOM_STYLE).ask()
+    target_count = int(target_str) if target_str.isdigit() else 0
+    dest = get_default_download_path(f"2gis_{city}_{query.replace(' ', '_')}.csv")
+    output_path = questionary.text("Output CSV Destination:", default=dest, style=CUSTOM_STYLE).ask().strip()
+
+    push_history_checkpoint({
+        "engine": "2gis",
+        "target": f"{city}:{query}",
+        "city_name": city,
+        "query_string": query,
+        "country": country,
+        "output_path": output_path,
+        "last_step": 1,
+        "total_saved": 0,
+        "target_count": target_count,
+    })
+
+    return Namespace(
+        engine="2gis",
+        city_name=city,
+        query_string=query,
         country=country,
         output_path=output_path,
-        start_page=1,
+        start_step=1,
         initial_saved=0,
         target_count=target_count,
-        auto_recover=True,
-        log=logging.INFO,
+    )
+
+
+def prompt_gmaps_wizard() -> Optional[Namespace]:
+    input_type = questionary.select(
+        "Select Google Maps Input Method:",
+        choices=[
+            "Single Search Query (e.g. 'Coffee in Dubai')",
+            "Batch Keywords File (.txt, .csv, .xlsx)",
+            "Direct Google Maps Search URL",
+            "[Back]",
+        ],
+        style=CUSTOM_STYLE,
+    ).ask()
+
+    if input_type == "[Back]" or not input_type:
+        return None
+
+    if "Single Search" in input_type or "Direct Google" in input_type:
+        target = questionary.text("Enter Search Query or Maps URL:", style=CUSTOM_STYLE).ask().strip()
+    else:
+        target = questionary.text("Enter Path to (.txt / .csv / .xlsx) Keyword File:", style=CUSTOM_STYLE).ask().strip()
+
+    target_str = questionary.text("Target leads count (0 for unlimited):", default="1000", style=CUSTOM_STYLE).ask()
+    target_count = int(target_str) if target_str.isdigit() else 0
+    dest = get_default_download_path("gmaps_leads.csv")
+    output_path = questionary.text("Output CSV Destination:", default=dest, style=CUSTOM_STYLE).ask().strip()
+
+    push_history_checkpoint({
+        "engine": "gmaps",
+        "target": target,
+        "output_path": output_path,
+        "last_step": 0,
+        "total_saved": 0,
+        "target_count": target_count,
+    })
+
+    return Namespace(
+        engine="gmaps",
+        target=target,
+        output_path=output_path,
+        start_step=0,
+        initial_saved=0,
+        target_count=target_count,
     )
 
 
 def initiate_cli_parser() -> Namespace:
-    state = load_state()
-    return prompt_user_wizard(existing_state=state)
+    while True:
+        render_banner()
+        main_choice = questionary.select(
+            "COMMAND ROOT:",
+            choices=[
+                "1. Google Maps Extractor (Keywords / Files / URLs)",
+                "2. 2GIS Lead Generator (UAE & Multi-Region)",
+                "3. Checkpoint Vault (Last 10 Session Resumes)",
+                "4. Architect Profile & Contacts",
+                "5. Exit Suite",
+            ],
+            style=CUSTOM_STYLE,
+        ).ask()
+
+        if main_choice.startswith("1."):
+            cfg = prompt_gmaps_wizard()
+            if cfg:
+                return cfg
+        elif main_choice.startswith("2."):
+            cfg = prompt_2gis_wizard()
+            if cfg:
+                return cfg
+        elif main_choice.startswith("3."):
+            cfg = history_menu()
+            if cfg:
+                return cfg
+        elif main_choice.startswith("4."):
+            display_architect_info()
+        else:
+            console.print("[dim magenta]Late night? Go sleep.[/dim magenta]")
+            sys.exit(0)
