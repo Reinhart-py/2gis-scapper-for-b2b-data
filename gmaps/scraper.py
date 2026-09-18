@@ -1,7 +1,7 @@
 import random
 import time
 from urllib.parse import quote
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -17,7 +17,6 @@ class GoogleMapsEngine:
         if headless:
             opts.add_argument("--headless=new")
         
-        # Standard desktop view flags
         opts.add_argument("--no-sandbox")
         opts.add_argument("--disable-dev-shm-usage")
         opts.add_argument("--disable-gpu")
@@ -27,12 +26,11 @@ class GoogleMapsEngine:
         opts.add_experimental_option("excludeSwitches", ["enable-automation"])
         opts.add_experimental_option("useAutomationExtension", False)
 
-        # Selenium 4.15+ has automatic driver management built-in
         service = Service()
         driver = webdriver.Chrome(service=service, options=opts)
         return driver
 
-    def human_delay(self, a: float = 1.0, b: float = 2.0) -> None:
+    def human_delay(self, a: float = 0.8, b: float = 1.6) -> None:
         time.sleep(random.uniform(a, b))
 
     def search_query(self, query_or_url: str) -> bool:
@@ -43,9 +41,9 @@ class GoogleMapsEngine:
             url = f"https://www.google.com/maps/search/{encoded}?hl=en"
 
         self.driver.get(url)
-        self.human_delay(3.0, 4.0)
+        self.human_delay(2.5, 3.5)
 
-        # Dismiss cookies / GDPR consent dialog if present
+        # Handle consent
         try:
             for btn_xpath in [
                 "//button[contains(@aria-label, 'Accept')]",
@@ -55,25 +53,48 @@ class GoogleMapsEngine:
                 btns = self.driver.find_elements(By.XPATH, btn_xpath)
                 if btns:
                     btns[0].click()
-                    self.human_delay(1.0, 1.5)
+                    self.human_delay(0.8, 1.2)
                     break
         except Exception:
             pass
 
         return True
 
-    def scroll_results_pane(self) -> None:
+    def is_end_of_list(self) -> bool:
+        """Checks if Google Maps explicitly rendered 'You've reached the end of the list'."""
+        try:
+            end_markers = self.driver.find_elements(
+                By.XPATH,
+                "//span[contains(text(), \"You've reached the end of the list\")] | "
+                "//div[contains(text(), \"You've reached the end of the list\")] | "
+                "//span[contains(text(), 'No more results')] | "
+                "//div[contains(@class, 'HlvSq')]"
+            )
+            return len(end_markers) > 0
+        except Exception:
+            return False
+
+    def is_single_place_view(self) -> bool:
+        """Checks if Google Maps redirected straight into a single business place pane."""
+        return "/maps/place/" in self.driver.current_url
+
+    def scroll_results_pane(self) -> Tuple[bool, int]:
+        """Scrolls feed and returns (has_scrolled, current_scroll_height)."""
         try:
             feed = self.driver.find_element(
                 By.XPATH, 
                 "//div[@role='feed'] | //div[contains(@aria-label, 'Results for')]"
             )
-            scroll_amt = random.randint(600, 1000)
+            old_top = self.driver.execute_script("return arguments[0].scrollTop;", feed)
+            scroll_amt = random.randint(700, 1100)
             self.driver.execute_script("arguments[0].scrollTop += arguments[1];", feed, scroll_amt)
-            self.human_delay(1.5, 2.5)
+            self.human_delay(1.2, 1.8)
+            new_top = self.driver.execute_script("return arguments[0].scrollTop;", feed)
+            return (new_top > old_top, new_top)
         except Exception:
             self.driver.execute_script(f"window.scrollBy(0, {random.randint(500, 800)});")
-            self.human_delay(1.2, 2.0)
+            self.human_delay(1.0, 1.5)
+            return (True, 0)
 
     def extract_visible_cards(self) -> List:
         return self.driver.find_elements(
@@ -92,9 +113,24 @@ class GoogleMapsEngine:
                 title = card.text.split("\n")[0] if card.text else "null"
 
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", card)
-            self.human_delay(0.2, 0.4)
+            self.human_delay(0.1, 0.2)
             card.click()
-            self.human_delay(2.0, 3.0)
+            self.human_delay(1.5, 2.3)
+
+            return self.parse_active_place_pane(link, title)
+        except Exception:
+            return None
+
+    def parse_active_place_pane(self, link: str = "", title: str = "") -> Optional[Dict[str, str]]:
+        """Extracts business data from the opened left info pane."""
+        try:
+            if not link:
+                link = self.driver.current_url
+            if not title:
+                try:
+                    title = self.driver.find_element(By.XPATH, "//h1[contains(@class, 'DUwDvf')]").text.strip()
+                except Exception:
+                    title = "null"
 
             data = {
                 "link": link,
