@@ -24,13 +24,18 @@ class GMapsRunner:
             ext = os.path.splitext(self.target_input)[1].lower()
             if ext in [".xlsx", ".xls"]:
                 df = pd.read_excel(self.target_input)
-                return [str(val).strip() for val in df.iloc[:, 0].dropna().tolist()]
             elif ext == ".csv":
                 df = pd.read_csv(self.target_input)
-                return [str(val).strip() for val in df.iloc[:, 0].dropna().tolist()]
             else:
                 with open(self.target_input, "r", encoding="utf-8") as f:
                     return [line.strip() for line in f if line.strip()]
+
+            # If the user created multiple columns in a table, combine them into one search query
+            if df.shape[1] > 1:
+                return df.apply(lambda row: " ".join(row.dropna().astype(str)), axis=1).tolist()
+            else:
+                return [str(val).strip() for val in df.iloc[:, 0].dropna().tolist()]
+
         return [self.target_input]
 
     def _init_csv(self) -> None:
@@ -43,21 +48,21 @@ class GMapsRunner:
     def run(self) -> None:
         self._init_csv()
         keywords = self._load_keywords()
-        engine = GoogleMapsEngine(headless=True)
+        engine = GoogleMapsEngine(headless=False)  # Set to False so you can watch progress
 
         console.print(f"[bold cyan]◈ Starting Google Maps Pipeline ({len(keywords)} tasks queued) ◈[/bold cyan]")
 
         try:
             for idx in range(self.current_idx, len(keywords)):
                 kw = keywords[idx]
-                console.print(f"\n[bold yellow]➜ [{idx+1}/{len(keywords)}] Querying: {kw}[/bold yellow]")
+                console.print(f"\n[bold yellow]➜ [{idx+1}/{len(keywords)}] Searching: {kw}[/bold yellow]")
 
                 success = engine.search_query(kw)
                 if not success:
-                    console.print(f"[red]Failed to load query: {kw}[/red]")
+                    console.print(f"[red]Failed to open search: {kw}[/red]")
                     continue
 
-                seen_titles = set()
+                seen_links = set()
                 scroll_attempts = 0
                 max_scrolls = 15
 
@@ -71,8 +76,8 @@ class GMapsRunner:
                             break
 
                         details = engine.parse_card_details(card)
-                        if details and details["title"] != "null" and details["title"] not in seen_titles:
-                            seen_titles.add(details["title"])
+                        if details and details.get("link") and details["link"] not in seen_links:
+                            seen_links.add(details["link"])
                             row = [
                                 kw,
                                 details["title"],
@@ -100,6 +105,6 @@ class GMapsRunner:
                     break
 
         except KeyboardInterrupt:
-            console.print("\n[yellow]Execution halted by operator. State stored.[/yellow]")
+            console.print("\n[yellow]Execution halted by user. Progress saved.[/yellow]")
         finally:
             engine.close()
