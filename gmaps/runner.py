@@ -1,6 +1,5 @@
 import csv
 import os
-import time
 from typing import List
 import pandas as pd
 from rich.console import Console
@@ -13,42 +12,51 @@ HEADERS = ["keyword", "title", "category", "phone", "website", "address", "ratin
 
 class GMapsRunner:
     def __init__(self, target_input: str, output_path: str, start_index: int = 0, target_count: int = 0):
-        self.target_input = target_input
-        self.output_path = output_path
+        # Sanitize Windows file paths (strip surrounding quotes or accidental whitespace)
+        self.target_input = target_input.strip('\'" \t\r\n')
+        self.output_path = output_path.strip('\'" \t\r\n')
         self.current_idx = start_index
         self.target_count = target_count
         self.total_saved = 0
 
     def _load_keywords(self) -> List[str]:
-        if os.path.isfile(self.target_input):
-            ext = os.path.splitext(self.target_input)[1].lower()
-            if ext in [".xlsx", ".xls"]:
-                df = pd.read_excel(self.target_input)
-            elif ext == ".csv":
-                df = pd.read_csv(self.target_input)
-            else:
-                with open(self.target_input, "r", encoding="utf-8") as f:
-                    return [line.strip() for line in f if line.strip()]
+        raw_path = os.path.abspath(os.path.expanduser(self.target_input))
+        if os.path.isfile(raw_path):
+            ext = os.path.splitext(raw_path)[1].lower()
+            try:
+                if ext in [".xlsx", ".xls"]:
+                    df = pd.read_excel(raw_path)
+                elif ext == ".csv":
+                    df = pd.read_csv(raw_path)
+                else:
+                    with open(raw_path, "r", encoding="utf-8") as f:
+                        return [line.strip() for line in f if line.strip()]
 
-            # If the user created multiple columns in a table, combine them into one search query
-            if df.shape[1] > 1:
-                return df.apply(lambda row: " ".join(row.dropna().astype(str)), axis=1).tolist()
-            else:
-                return [str(val).strip() for val in df.iloc[:, 0].dropna().tolist()]
+                # If file has multiple columns, join them into complete search queries
+                if df.shape[1] > 1:
+                    return df.apply(lambda row: " ".join(row.dropna().astype(str)), axis=1).tolist()
+                else:
+                    return [str(val).strip() for val in df.iloc[:, 0].dropna().tolist()]
+            except Exception as e:
+                console.print(f"[red]Error parsing file: {e}[/red]")
+                return [self.target_input]
 
         return [self.target_input]
 
     def _init_csv(self) -> None:
-        os.makedirs(os.path.dirname(os.path.abspath(self.output_path)), exist_ok=True)
-        if not os.path.exists(self.output_path) or os.path.getsize(self.output_path) == 0:
-            with open(self.output_path, "w", encoding="utf-8", newline="") as f:
+        abs_output = os.path.abspath(os.path.expanduser(self.output_path))
+        os.makedirs(os.path.dirname(abs_output), exist_ok=True)
+        if not os.path.exists(abs_output) or os.path.getsize(abs_output) == 0:
+            with open(abs_output, "w", encoding="utf-8", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(HEADERS)
 
     def run(self) -> None:
         self._init_csv()
         keywords = self._load_keywords()
-        engine = GoogleMapsEngine(headless=False)  # Set to False so you can watch progress
+        
+        console.print(f"[bold cyan]Launching Chrome Window for Google Maps...[/bold cyan]")
+        engine = GoogleMapsEngine(headless=False)  # Explicitly visible window
 
         console.print(f"[bold cyan]◈ Starting Google Maps Pipeline ({len(keywords)} tasks queued) ◈[/bold cyan]")
 
