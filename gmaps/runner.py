@@ -12,7 +12,6 @@ HEADERS = ["keyword", "title", "category", "phone", "website", "address", "ratin
 
 class GMapsRunner:
     def __init__(self, target_input: str, output_path: str, start_index: int = 0, target_count: int = 0):
-        # Sanitize Windows file paths (strip surrounding quotes or accidental whitespace)
         self.target_input = target_input.strip('\'" \t\r\n')
         self.output_path = output_path.strip('\'" \t\r\n')
         self.current_idx = start_index
@@ -32,7 +31,6 @@ class GMapsRunner:
                     with open(raw_path, "r", encoding="utf-8") as f:
                         return [line.strip() for line in f if line.strip()]
 
-                # If file has multiple columns, join them into complete search queries
                 if df.shape[1] > 1:
                     return df.apply(lambda row: " ".join(row.dropna().astype(str)), axis=1).tolist()
                 else:
@@ -55,64 +53,96 @@ class GMapsRunner:
         self._init_csv()
         keywords = self._load_keywords()
         
-        console.print(f"[bold cyan]Launching Chrome Window for Google Maps...[/bold cyan]")
-        engine = GoogleMapsEngine(headless=False)  # Explicitly visible window
-
-        console.print(f"[bold cyan]◈ Starting Google Maps Pipeline ({len(keywords)} tasks queued) ◈[/bold cyan]")
+        console.print("[bold cyan]Spawning Chrome engine...[/bold cyan]")
+        engine = GoogleMapsEngine(headless=False)
+        console.print(f"[bold cyan]◈ Commencing Queue: {len(keywords)} tasks loaded ◈[/bold cyan]")
 
         try:
             for idx in range(self.current_idx, len(keywords)):
                 kw = keywords[idx]
-                console.print(f"\n[bold yellow]➜ [{idx+1}/{len(keywords)}] Searching: {kw}[/bold yellow]")
+                console.print(f"\n[bold yellow]➜ [{idx+1}/{len(keywords)}] Keyword: {kw}[/bold yellow]")
 
                 success = engine.search_query(kw)
                 if not success:
-                    console.print(f"[red]Failed to open search: {kw}[/red]")
+                    console.print(f"[red]Failed to open query: {kw}[/red]")
                     continue
 
                 seen_links = set()
-                scroll_attempts = 0
-                max_scrolls = 15
+                stagnant_scroll_count = 0
+                max_scrolls = 25
 
-                while scroll_attempts < max_scrolls:
+                # Check if Google directly opened a single place page instead of list
+                if engine.is_single_place_view():
+                    console.print(f"[dim cyan]Single business page detected for '{kw}'[/dim cyan]")
+                    details = engine.parse_active_place_pane()
+                    if details and details["title"] != "null":
+                        row = [
+                            kw, details["title"], details["category"], details["phone"],
+                            details["website"], details["address"], details["rating"], details["reviews"]
+                        ]
+                        with open(self.output_path, "a", encoding="utf-8", newline="") as f:
+                            csv.writer(f).writerow(row)
+                        self.total_saved += 1
+                        console.print(f" [green]#{self.total_saved}[/green] [white]{details['title'][:25]}[/white] | [cyan]{details['phone']}[/cyan]")
+                    
+                    update_latest_progress("gmaps", self.target_input, idx + 1, self.total_saved)
+                    continue
+
+                for _ in range(max_scrolls):
                     if self.target_count > 0 and self.total_saved >= self.target_count:
                         break
 
                     cards = engine.extract_visible_cards()
+                    new_cards_found = 0
+
                     for card in cards:
                         if self.target_count > 0 and self.total_saved >= self.target_count:
                             break
 
-                        details = engine.parse_card_details(card)
-                        if details and details.get("link") and details["link"] not in seen_links:
-                            seen_links.add(details["link"])
-                            row = [
-                                kw,
-                                details["title"],
-                                details["category"],
-                                details["phone"],
-                                details["website"],
-                                details["address"],
-                                details["rating"],
-                                details["reviews"],
-                            ]
-                            with open(self.output_path, "a", encoding="utf-8", newline="") as f:
-                                writer = csv.writer(f)
-                                writer.writerow(row)
+                        try:
+                            href = card.get_attribute("href")
+                            if not href or href in seen_links:
+                                continue
 
-                            self.total_saved += 1
-                            console.print(f" [green]#{self.total_saved}[/green] [white]{details['title'][:25]}[/white] | [cyan]{details['phone']}[/cyan] | [dim]{details['website'][:25]}[/dim]")
+                            details = engine.parse_card_details(card)
+                            if details and details.get("link"):
+                                seen_links.add(details["link"])
+                                row = [
+                                    kw, details["title"], details["category"], details["phone"],
+                                    details["website"], details["address"], details["rating"], details["reviews"]
+                                ]
+                                with open(self.output_path, "a", encoding="utf-8", newline="") as f:
+                                    csv.writer(f).writerow(row)
 
-                    engine.scroll_results_pane()
-                    scroll_attempts += 1
+                                self.total_saved += 1
+                                new_cards_found += 1
+                                console.print(f" [green]#{self.total_saved}[/green] [white]{details['title'][:25]}[/white] | [cyan]{details['phone']}[/cyan] | [dim]{details['website'][:25]}[/dim]")
+                        except Exception:
+                            continue
+
+                    # 1. Check if Google rendered the end badge
+                    if engine.is_end_of_list():
+                        console.print("[dim cyan]Reached the end of list for this keyword. Progressing to next...[/dim cyan]")
+                        break
+
+                    # 2. Track stagnant scrolling (no new items rendered)
+                    has_moved, _ = engine.scroll_results_pane()
+                    if new_cards_found == 0 and not has_moved:
+                        stagnant_scroll_count += 1
+                    else:
+                        stagnant_scroll_count = 0
+
+                    if stagnant_scroll_count >= 2:
+                        console.print("[dim cyan]No further records loading. Advancing to next keyword...[/dim cyan]")
+                        break
 
                 update_latest_progress("gmaps", self.target_input, idx + 1, self.total_saved)
 
                 if self.target_count > 0 and self.total_saved >= self.target_count:
-                    console.print(f"\n[bold green]✔ Target goal of {self.target_count} leads fulfilled.[/bold green]")
+                    console.print(f"\n[bold green]✔ Target goal of {self.target_count} leads reached.[/bold green]")
                     break
 
         except KeyboardInterrupt:
-            console.print("\n[yellow]Execution halted by user. Progress saved.[/yellow]")
+            console.print("\n[yellow]Execution paused by user. State secured.[/yellow]")
         finally:
             engine.close()
