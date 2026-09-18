@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from rich.box import ROUNDED, DOUBLE_EDGE
 
 from .state_manager import load_all_history, push_history_checkpoint
 
@@ -19,15 +20,15 @@ console = Console()
 STATE_FILE = ".scraper_state.json"
 
 CUSTOM_STYLE = Style([
-    ("qmark", "fg:#00ffff bold"),
+    ("qmark", "fg:#00f0ff bold"),
     ("question", "fg:#ffffff bold"),
-    ("answer", "fg:#39ff14 bold"),
+    ("answer", "fg:#00ff66 bold"),
     ("pointer", "fg:#ff007f bold"),
-    ("highlighted", "fg:#00ffff bold underline"),
-    ("selected", "fg:#39ff14"),
-    ("separator", "fg:#555555"),
-    ("instruction", "fg:#777777 italic"),
-    ("text", "fg:#eeeeee"),
+    ("highlighted", "fg:#00f0ff bold underline"),
+    ("selected", "fg:#00ff66 bold"),
+    ("separator", "fg:#3a3a4c"),
+    ("instruction", "fg:#6272a4 italic"),
+    ("text", "fg:#f8f8f2"),
 ])
 
 
@@ -60,7 +61,8 @@ def clear_state() -> None:
 
 def render_banner() -> None:
     console.clear()
-    ascii_art = """
+    
+    header_art = """
  ██████╗ ███████╗██████╗  ██████╗ ██████╗     ███████╗██╗   ██╗██╗████████╗███████╗
 ██╔════╝ ██╔════╝██╔══██╗██╔═══██╗██╔══██╗    ██╔════╝██║   ██║██║╚══██╔══╝██╔════╝
 ██║  ███╗█████╗  ██████╔╝██║   ██║██████╔╝    ███████╗██║   ██║██║   ██║   █████╗  
@@ -68,18 +70,29 @@ def render_banner() -> None:
 ╚██████╔╝███████╗██████╔╝╚██████╔╝██║         ███████║╚██████╔╝██║   ██║   ███████╗
  ╚═════╝ ╚══════╝╚═════╝  ╚═════╝ ╚═╝         ╚══════╝ ╚═════╝ ╚═╝   ╚═╝   ╚══════╝
     """
-    gradient_text = Text(ascii_art)
-    gradient_text.stylize("bold cyan")
+    banner_text = Text(header_art)
+    banner_text.stylize("bold cyan")
 
-    panel = Panel(
-        Align.center(gradient_text),
-        title="[bold #39ff14]◈ DUAL-ENGINE INTELLIGENCE v0.3.0 ◈[/bold #39ff14]",
-        subtitle="[bold white]Developed by: [/bold white][link=https://reinhart.pages.dev/][bold magenta underline]Reinhart aka kiri[/bold magenta underline][/link]",
-        subtitle_align="center",
-        border_style="bold #00e5ff",
-        padding=(0, 2),
+    status_table = Table(box=ROUNDED, border_style="#3a3a4c", show_header=False, expand=True)
+    status_table.add_column("Key", style="bold #ff007f", width=22)
+    status_table.add_column("Val", style="bold white")
+
+    status_table.add_row("◈ ARCHITECTURE", "High-Throughput Lead Intelligence System (Dual Engine)")
+    status_table.add_row("◈ RATE-LIMIT BYPASS", "Active Human-Emulation Jitter + 20s Dynamic Sentry")
+    status_table.add_row("◈ MOBILE DETECTION", "Direct Mobile Extraction Prioritization (+9715 / Global)")
+    status_table.add_row("◈ LEAD DEVELOPER", "[link=https://reinhart.pages.dev/][bold #00f0ff underline]Reinhart aka kiri[/bold #00f0ff underline][/link] | [dim]Portfolio Attached[/dim]")
+
+    console.print(
+        Panel(
+            Align.center(banner_text),
+            title="[bold #00ff66]⚡ GEBOP ENTERPRISE v4.0.0 ⚡[/bold #00ff66]",
+            border_style="bold #00f0ff",
+            box=DOUBLE_EDGE,
+            padding=(0, 1),
+        )
     )
-    console.print(panel)
+    console.print(status_table)
+    console.print("")
 
 
 def display_architect_info() -> None:
@@ -99,42 +112,42 @@ def display_architect_info() -> None:
      We do it because we thought it would be easy."
 [/bold #DEADED]
     """
-    console.print(Panel(Align.center(text), border_style="magenta"))
+    console.print(Panel(Align.center(text), title="[bold #ff007f]◈ SYSTEM PROFILE ◈[/bold #ff007f]", border_style="#ff007f", box=ROUNDED))
     questionary.press_any_key_to_continue(message="Press any key to return...").ask()
 
 
 def history_menu() -> Optional[Namespace]:
     history = load_all_history()
     if not history:
-        console.print("[yellow]No execution checkpoints recorded yet.[/yellow]")
+        console.print("[yellow]✦ Checkpoint vault is currently empty.[/yellow]")
         questionary.press_any_key_to_continue().ask()
         return None
 
-    table = Table(title="◈ LAST 10 EXECUTION CHECKPOINTS ◈", border_style="cyan")
-    table.add_column("Index", style="bold yellow")
-    table.add_column("Engine", style="bold green")
-    table.add_column("Target / Query", style="white")
-    table.add_column("Checkpoint", style="cyan")
-    table.add_column("Collected", style="bold magenta")
+    table = Table(title="◈ CHECKPOINT RESTORATION VAULT (LAST 10 SESSIONS) ◈", border_style="bold #00f0ff", box=ROUNDED)
+    table.add_column("ID", style="bold yellow", width=4)
+    table.add_column("ENGINE", style="bold green", width=10)
+    table.add_column("TARGET SOURCE", style="white", width=35)
+    table.add_column("STEP / PAGE", style="cyan", width=14)
+    table.add_column("HARVESTED", style="bold magenta")
 
     choices = []
     for idx, item in enumerate(history):
         table.add_row(
             str(idx + 1),
             item.get("engine", "unknown").upper(),
-            str(item.get("target", ""))[:30],
-            f"Step/Page {item.get('last_step', 1)}",
+            str(item.get("target", ""))[:32],
+            f"Step {item.get('last_step', 1)}",
             f"{item.get('total_saved', 0)} leads",
         )
         choices.append(questionary.Choice(
-            title=f"[{item.get('engine').upper()}] {item.get('target')} (Saved: {item.get('total_saved')})",
+            title=f"[{item.get('engine').upper()}] {item.get('target')} ({item.get('total_saved')} collected)",
             value=item,
         ))
 
     console.print(table)
-    choices.append(questionary.Choice(title="[Back to Main Menu]", value="BACK"))
+    choices.append(questionary.Choice(title="[Back to Control Center]", value="BACK"))
 
-    selected = questionary.select("Select a checkpoint to resume:", choices=choices, style=CUSTOM_STYLE).ask()
+    selected = questionary.select("Select checkpoint to resume execution:", choices=choices, style=CUSTOM_STYLE).ask()
     if selected == "BACK" or not selected:
         return None
 
@@ -153,29 +166,29 @@ def history_menu() -> Optional[Namespace]:
 
 def prompt_2gis_wizard() -> Optional[Namespace]:
     city = questionary.select(
-        "Select Target City:",
-        choices=["Abu Dhabi", "Dubai", "Sharjah", "Al Ain", "Ajman", "Other (Custom)", "[Back]"],
+        "Select Target Region / Emirate:",
+        choices=["Abu Dhabi", "Dubai", "Sharjah", "Al Ain", "Ajman", "Custom Query Entry", "[Back]"],
         style=CUSTOM_STYLE,
     ).ask()
     if city == "[Back]" or not city:
         return None
 
-    if city == "Other (Custom)":
-        city = questionary.text("Enter City Name:", style=CUSTOM_STYLE).ask().strip().lower()
+    if city == "Custom Query Entry":
+        city = questionary.text("Enter Custom City/Region Name:", style=CUSTOM_STYLE).ask().strip().lower()
     else:
         city = city.strip().lower()
 
-    query = questionary.text("Enter Keyword (e.g. software, hotels):", style=CUSTOM_STYLE).ask().strip()
-    country = questionary.select("Select Domain:", choices=[
+    query = questionary.text("Enter Search Keyword (e.g. software companies, cafes, clinics):", style=CUSTOM_STYLE).ask().strip()
+    country = questionary.select("Select Domain System:", choices=[
         questionary.Choice("UAE (2gis.ae)", value="ae"),
         questionary.Choice("Russia (2gis.ru)", value="ru"),
         questionary.Choice("Kazakhstan (2gis.kz)", value="kz"),
     ], style=CUSTOM_STYLE).ask()
 
-    target_str = questionary.text("Target leads limit (0 for unlimited):", default="2000", style=CUSTOM_STYLE).ask()
+    target_str = questionary.text("Target leads cap (0 for continuous operation):", default="2000", style=CUSTOM_STYLE).ask()
     target_count = int(target_str) if target_str.isdigit() else 0
     dest = get_default_download_path(f"2gis_{city}_{query.replace(' ', '_')}.csv")
-    output_path = questionary.text("Output CSV Destination:", default=dest, style=CUSTOM_STYLE).ask().strip()
+    output_path = questionary.text("Export CSV File Destination:", default=dest, style=CUSTOM_STYLE).ask().strip()
 
     push_history_checkpoint({
         "engine": "2gis",
@@ -203,11 +216,11 @@ def prompt_2gis_wizard() -> Optional[Namespace]:
 
 def prompt_gmaps_wizard() -> Optional[Namespace]:
     input_type = questionary.select(
-        "Select Google Maps Input Method:",
+        "Select Google Maps Input Vector:",
         choices=[
-            "Single Search Query (e.g. 'Coffee in Dubai')",
-            "Batch Keywords File (.txt, .csv, .xlsx)",
-            "Direct Google Maps Search URL",
+            "Single Search Query (e.g. 'Software in Business Bay')",
+            "Batch File Processing (.csv, .xlsx, .txt)",
+            "Direct Google Maps Custom Place URL",
             "[Back]",
         ],
         style=CUSTOM_STYLE,
@@ -217,14 +230,14 @@ def prompt_gmaps_wizard() -> Optional[Namespace]:
         return None
 
     if "Single Search" in input_type or "Direct Google" in input_type:
-        target = questionary.text("Enter Search Query or Maps URL:", style=CUSTOM_STYLE).ask().strip()
+        target = questionary.text("Enter Target Query or Maps Web URL:", style=CUSTOM_STYLE).ask().strip()
     else:
-        target = questionary.text("Enter Path to (.txt / .csv / .xlsx) Keyword File:", style=CUSTOM_STYLE).ask().strip()
+        target = questionary.text("Paste Path to Batch File (Tip: Drag & Drop file here):", style=CUSTOM_STYLE).ask().strip()
 
-    target_str = questionary.text("Target leads count (0 for unlimited):", default="1000", style=CUSTOM_STYLE).ask()
+    target_str = questionary.text("Target leads cap (0 for continuous extraction):", default="1000", style=CUSTOM_STYLE).ask()
     target_count = int(target_str) if target_str.isdigit() else 0
     dest = get_default_download_path("gmaps_leads.csv")
-    output_path = questionary.text("Output CSV Destination:", default=dest, style=CUSTOM_STYLE).ask().strip()
+    output_path = questionary.text("Export CSV File Destination:", default=dest, style=CUSTOM_STYLE).ask().strip()
 
     push_history_checkpoint({
         "engine": "gmaps",
@@ -249,13 +262,13 @@ def initiate_cli_parser() -> Namespace:
     while True:
         render_banner()
         main_choice = questionary.select(
-            "COMMAND ROOT:",
+            "PRIMARY ACTION DISPATCHER:",
             choices=[
-                "1. Google Maps Extractor (Keywords / Files / URLs)",
-                "2. 2GIS Lead Generator (UAE & Multi-Region)",
-                "3. Checkpoint Vault (Last 10 Session Resumes)",
-                "4. Architect Profile & Contacts",
-                "5. Exit Suite",
+                "1. Google Maps Lead Miner (Batch Files / Queries / URLs)",
+                "2. 2GIS Lead Generator (Emirates & Multi-Country)",
+                "3. Checkpoint Vault (Restore Any of Last 10 Sessions)",
+                "4. Architect Profile & Intelligence Dossier",
+                "5. Terminate Session",
             ],
             style=CUSTOM_STYLE,
         ).ask()
